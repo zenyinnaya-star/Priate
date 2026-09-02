@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: stg_pool_prices
+    description: "Typed AESO pool-price observations loaded by the Python ingestion layer."
+    columns:
+      - name: begin_datetime_utc
+        tests: [not_null, unique]
+      - name: pool_price
+        tests: [not_null]
+  - name: fct_pool_price_hourly
+    description: "Dashboard-ready hourly pool-price facts with forecast variance and operating-day fields."
+    columns:
+      - name: begin_datetime_utc
+        tests: [not_null, unique]
+      - name: pool_price
+        tests: [not_null]

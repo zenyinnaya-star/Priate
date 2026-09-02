@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Alberta Grid Pipeline
 
-## Getting Started
+A production-shaped portfolio data platform for Alberta electricity market data. The repository combines a thin AESO API client, typed raw ingestion into DuckDB, dbt transformations compatible with Postgres/Supabase, Prefect orchestration, pytest coverage, and a Next.js 15/Recharts operations dashboard.
 
-First, run the development server:
+## Architecture
+
+The ingestion boundary is intentionally narrow: `src/aeso/client.py` owns the AESO header, date formatting, one-request-per-second throttle, and retries only for HTTP 429 and 5xx responses. `src/pipeline/storage.py` converts AESO string values into typed raw tables while preserving the original response as JSON for auditability. `dbt/` then publishes staging and mart relations from the same project configuration in local DuckDB or production Postgres. Prefect tasks provide retryable orchestration and structured completion logs.
+
+The dashboard is a polished local preview of the downstream product surface. Its chart and status panels use a deterministic seeded dataset until a production serving endpoint is wired; this keeps the frontend runnable without exposing database credentials in the browser.
+
+## Quick start
 
 ```bash
+cp .env.example .env
+# set AESO_API_KEY in .env
+uv sync --dev
+uv run pytest
+uv run python flows/backfill.py --start 2025-01-01 --end 2025-01-07
+uv run dbt --project-dir dbt --profiles-dir . run
+uv run dbt --project-dir dbt --profiles-dir . test
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The local DuckDB file is created at `data/alberta_grid.duckdb`. Copy `profiles.yml.example` to `profiles.yml` if you want to customize the dbt profile. For production, set `DBT_TARGET=prod` and provide the Supabase/Postgres variables from `.env.example`; no API keys or database credentials are committed.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tests and observability
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The extract/load tests cover response-path extraction, date chunking, retry behavior, and numeric normalization. Runtime logging records request parameters and row counts without logging the API key or raw credentials. Prefect task retries are separate from HTTP retries, so transient upstream failures and orchestration failures remain visible as distinct events.
 
-## Learn More
+## Repository map
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Path | Responsibility |
+| --- | --- |
+| `src/aeso/client.py` | AESO HTTP client, auth header, throttling, retry policy |
+| `src/pipeline/storage.py` | DuckDB raw tables and type-safe loading |
+| `flows/backfill.py` | Runnable Prefect backfill and supply snapshot flow tasks |
+| `dbt/` | Shared DuckDB/Postgres transformations and tests |
+| `tests/` | Extract/load unit tests |
+| `src/app/` | Next.js 15/Recharts operations dashboard |
